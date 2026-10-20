@@ -32,6 +32,7 @@ Runs come in two shapes:
 - [How split-host mode works](#how-split-host-mode-works)
 - [Quick start](#quick-start)
 - [The EC2 instance](#the-ec2-instance)
+  - [Recommended configuration](#recommended-configuration)
   - [Region](#region)
   - [Instance type](#instance-type)
   - [Operating system image](#operating-system-image)
@@ -132,6 +133,23 @@ when the two `VERSION`/git commits differ.
 ---
 
 ## The EC2 instance
+
+### Recommended configuration
+
+| Setting | Recommended | Details |
+| --- | --- | --- |
+| Region | Your project's selected Region | [Region](#region) |
+| Instance type | `c7g.large` (2 vCPU, 4 GiB, Graviton, fixed performance); on the free plan, `m7i-flex.large` | [Instance type](#instance-type) |
+| Architecture | arm64 (x86-64 with `m7i-flex.large` / `c7i.large`) | [Instance type](#instance-type) |
+| Image | Ubuntu Server 26.04 LTS (standard, not Pro), via the Canonical SSM parameter | [Operating system image](#operating-system-image) |
+| Root volume | 30 GiB gp3, encrypted (minimum 20 GiB; the default 8 GiB is too small) | [Storage](#storage) |
+| Network | Default VPC, public subnet, auto-assigned public IPv4 | [Launching with the AWS CLI](#launching-with-the-aws-cli) |
+| Security group, inbound | TCP 22 and TCP 14433–15432, from your public IP `/32` only | [Network and security group](#network-and-security-group) |
+| Security group, outbound | Default (all traffic), for `setup.sh`'s downloads | [Network and security group](#network-and-security-group) |
+| Key pair | ed25519, saved as `~/.ssh/pqc-bench.pem` (mode 400) | [Launching with the AWS CLI](#launching-with-the-aws-cli) |
+| Instance metadata | IMDSv2 only (`HttpTokens=required`) | [Launching with the AWS CLI](#launching-with-the-aws-cli) |
+| CPU credits | Not applicable to `c7g`; `CpuCredits=standard` if you use a T instance | [Instance type](#instance-type) |
+| SSH user | `ubuntu` | [SSH access](#ssh-access) |
 
 ### Region
 
