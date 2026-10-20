@@ -114,7 +114,7 @@ flowchart LR
 # 1. Launch an EC2 instance (see "The EC2 instance") and open TCP 22 and 14433-15432 to your IP.
 
 # 2. On the instance: the same checkout as on your workstation, built
-git clone https://github.com/<you>/<repo>.git pqc-bench && cd pqc-bench
+git clone https://github.com/ctf16/pqtls.git pqc-bench && cd pqc-bench
 ./setup.sh --deps                      # packages (sudo), then every library
 ./pqcbench.sh --all --inproc           # loopback baseline on the instance's CPU
 
