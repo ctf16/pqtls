@@ -257,9 +257,10 @@
 #   failure too). With --capture, the servers' TLS secrets come back as well,
 #   and the capture runs here, on the interface towards HOST.
 #   Clients connect to REMOTE_ADDR directly (no tunnel), so segment sizes,
-#   round trips and congestion windows are the path's own. They check the
-#   server certificate against the name localhost (s_client: the chain only),
-#   never against the address, so the certificates stay as they are.
+#   round trips and congestion windows are the path's own. Server certificates
+#   name DNS:localhost and IP:<the address clients connect to> (127.0.0.1 on
+#   loopback): s2nc matches its connect address, the other clients localhost
+#   (s_client: the chain only). Same size as on loopback.
 #   The RTT (the median of 15 request/reply exchanges with the agent over the
 #   SSH connection; needs perl or python3 here) is measured at the start and
 #   the end, into env.txt (`remote:`, `remote end:`), along with HOST's own
@@ -1917,15 +1918,27 @@ static int issue(Cert* cert, int subjLevel, dilithium_key* subjKey,
 }
 #ifdef WOLFSSL_ALT_NAMES
 /* the subjectAltName of the OpenSSL-issued leaves, as GeneralNames DER:
- * DNS:localhost, IP:127.0.0.1 (server) or DNS:pqc-bench-client (client) */
-static void set_alt_names(Cert* cert, int server)
+ * DNS:localhost, IP:PQCB_SAN_IP (server; the IPv4 address the clients connect
+ * to, 127.0.0.1 when unset) or DNS:pqc-bench-client (client). -1: PQCB_SAN_IP
+ * isn't an IPv4 address */
+static int set_alt_names(Cert* cert, int server)
 {
-    static const byte srv[] = { 0x30, 0x11, 0x82, 0x09, 'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't',
-                                0x87, 0x04, 127, 0, 0, 1 };
+    static byte srv[] = { 0x30, 0x11, 0x82, 0x09, 'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't',
+                          0x87, 0x04, 127, 0, 0, 1 };
     static const byte cli[] = { 0x30, 0x12, 0x82, 0x10, 'p', 'q', 'c', '-', 'b', 'e', 'n', 'c', 'h',
                                 '-', 'c', 'l', 'i', 'e', 'n', 't' };
+    const char* ip = getenv("PQCB_SAN_IP");
+    if (server && ip) {
+        unsigned int a, b, c, d;
+        char extra;
+        if (sscanf(ip, "%u.%u.%u.%u%c", &a, &b, &c, &d, &extra) != 4 ||
+            a > 255 || b > 255 || c > 255 || d > 255)
+            return -1;
+        srv[15] = (byte)a; srv[16] = (byte)b; srv[17] = (byte)c; srv[18] = (byte)d;
+    }
     cert->altNamesSz = server ? (int)sizeof(srv) : (int)sizeof(cli);
     memcpy(cert->altNames, server ? srv : cli, (size_t)cert->altNamesSz);
+    return 0;
 }
 #endif
 #endif
@@ -2001,7 +2014,8 @@ static int ec_cmd(int argc, char** argv)
             wc_SetAuthKeyIdFromCert(&cert, caDer, (int)caDerLen);
         #endif
         #ifdef WOLFSSL_ALT_NAMES
-            set_alt_names(&cert, strcmp(argv[5], "client") != 0);
+            if (set_alt_names(&cert, strcmp(argv[5], "client") != 0) != 0)
+                ret = die2("PQCB_SAN_IP is not an IPv4 address");
         #endif
             if (ret == 0) ret = ec_issue(&cert, &key, &caKey, &rng, argv[7]);
         }
@@ -2149,7 +2163,8 @@ int main(int argc, char** argv)
                 wc_SetAuthKeyIdFromCert(&cert, der, (int)caDerLen);
             #endif
             #ifdef WOLFSSL_ALT_NAMES
-                set_alt_names(&cert, strcmp(argv[7], "client") != 0);
+                if (set_alt_names(&cert, strcmp(argv[7], "client") != 0) != 0)
+                    ret = die2("PQCB_SAN_IP is not an IPv4 address");
             #endif
                 if (ret == 0) ret = issue(&cert, level, &key, caLevel, &key2, &rng, argv[9]);
             }
@@ -2366,7 +2381,7 @@ mk_chain_openssl() {
     -addext "keyUsage=critical,keyCertSign,cRLSign" -out "$1/ca.pem" || return 1
   for _mo_role in $5; do
     if [ "$_mo_role" = srv ]; then _mo_cn=localhost; _mo_eku=serverAuth
-      _mo_san="subjectAltName=DNS:localhost,IP:127.0.0.1"
+      _mo_san="subjectAltName=DNS:localhost,IP:$CONNECT_HOST"
     else _mo_cn="pqc-bench client"; _mo_eku=clientAuth; _mo_san="subjectAltName=DNS:pqc-bench-client"; fi
     printf '%s\n' "$_mo_san" "basicConstraints=CA:FALSE" "keyUsage=critical,digitalSignature" \
       "extendedKeyUsage=$_mo_eku" > "$1/$_mo_role.ext"
@@ -2392,11 +2407,11 @@ mk_chain_wolfssl() {
     if [ "$_mw" = srv ]; then _mw_cn=localhost; _mw_use=server; else _mw_cn="pqc-bench client"; _mw_use=client; fi
     if [ "$3" = ec ]; then
       # (SEC1 key: "EC PRIVATE KEY")
-      "$HELPER" ecmkleaf "$1/ca.key.der" "$1/ca.der" "$_mw_cn" "$_mw_use" \
+      PQCB_SAN_IP=$CONNECT_HOST "$HELPER" ecmkleaf "$1/ca.key.der" "$1/ca.der" "$_mw_cn" "$_mw_use" \
         "$1/$_mw.key.der" "$1/$_mw.der" || return 1
       _mw_kl="EC PRIVATE KEY"
     else
-      "$HELPER" mkleaf "$3" "$2" "$1/ca.key.der" "$1/ca.der" "$_mw_cn" "$_mw_use" \
+      PQCB_SAN_IP=$CONNECT_HOST "$HELPER" mkleaf "$3" "$2" "$1/ca.key.der" "$1/ca.der" "$_mw_cn" "$_mw_use" \
         "$1/$_mw.key.der" "$1/$_mw.der" || return 1
       _mw_kl="PRIVATE KEY"
     fi
@@ -2844,7 +2859,7 @@ vs_make_certs() { # DIR
   mkdir -p "$1" && write_req_cnf "$1/req.cnf" || return 1
   for _vk in ec mldsa; do
     if [ $_vk = ec ]; then _va='-algorithm EC -pkeyopt ec_paramgen_curve:P-256'; else _va='-algorithm ML-DSA-65'; fi
-    printf '%s\n' "subjectAltName=DNS:localhost,IP:127.0.0.1" "basicConstraints=CA:FALSE" \
+    printf '%s\n' "subjectAltName=DNS:localhost,IP:$CONNECT_HOST" "basicConstraints=CA:FALSE" \
       "keyUsage=critical,digitalSignature" "extendedKeyUsage=serverAuth" > "$1/srv.ext"
     # shellcheck disable=SC2086
     "$OPENSSL" genpkey $_va -out "$1/$_vk-ca.key" &&

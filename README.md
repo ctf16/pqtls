@@ -92,9 +92,10 @@ flowchart LR
 - **Clients connect to HOST directly**, with no tunnel. Segment sizes, round trips and congestion
   windows are those of the real path. An SSH tunnel would end TCP on your workstation and hide
   exactly what this project measures.
-- **Certificates are made on the workstation** and sent to the agent over the SSH session. Every
-  client checks the server certificate against the name `localhost` (OpenSSL's `s_client` checks
-  the chain only), never against the address, so the certificates are the same as on loopback.
+- **Certificates are made on the workstation** and sent to the agent over the SSH session. Server
+  certificates name `DNS:localhost` and `IP:<the instance's address>` (`127.0.0.1` on loopback), so
+  they are the same size either way. s2n-tls's `s2nc` checks the address it connects to; the other
+  clients check `localhost` (OpenSSL's `s_client` checks the chain only).
 - **Server logs come back** into the run's `logs/`, at the end of the run and immediately when a
   server fails to start. With `--capture`, the servers' TLS secrets come back too, so captures
   decrypt.
@@ -646,6 +647,7 @@ crates.io. `wolfcrypt` is GPL-3.0 and is fetched and patched by `setup.sh`.
 | Every preflight fails with `handshake failed`, after timeouts | The benchmark ports aren't reachable: check the security group's 14433–15432 rule, your current public address (`curl -s https://checkip.amazonaws.com`), and whether your network blocks those ports. On HOST, `ss -ltn` during a run shows the listening servers. |
 | `server on HOST didn't start …: port N is already in use` | A leftover server from an agent that was killed outright. On HOST: `ss -ltnp \| grep -E ':1[45][0-9]{3} '`, then stop it (`pkill -f 'pqcbench.sh --serve'`, or the server by its PID). |
 | Only the pairs with a rustls server fail, and its log in `logs/server-rustls-*.log` says `listening on 127.0.0.1:…` | HOST's `pqc-rustls` predates `--bind` (older builds ignore the option): `./setup.sh rustls` there. |
+| Only the pairs with an s2n-tls client fail; `logs/preflight-s2n-to-*.log` says `Certificate is not valid for the supplied hostname` | The workstation's checkout predates server certificates naming the connect address (`s2nc` checks that address, not `localhost`): `git pull` there. A `MLDSA_HELPER` built from an older `pqcbench.sh` has the same problem for wolfSSL-issued certificates. |
 | `can't resolve NAME to an IPv4 address` | No IPv4 address for HostName, or no perl/python3 here: set `REMOTE_ADDR` to the instance's IPv4 address. |
 | `couldn't time the round trip` | perl and python3 are both missing on the workstation. |
 | SSH refused after many attempts | OpenSSH penalises addresses that open connections without logging in. Wait for the penalty to expire, and don't probe port 22. |
