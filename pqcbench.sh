@@ -129,18 +129,6 @@
 #                         as its own library rustls_<provider> (dashes become
 #                         underscores: rustls_aws_lc_rs) in the client x server
 #                         matrix, so providers also meet each other.
-#   --mtu N               network simulation (netsim.sh, needs root: sudo asks
-#                         once): the loopback MTU becomes N (1500 for Ethernet),
-#                         so flights are sent as real-size segments
-#   --rtt MS              network simulation: a round-trip time of MS ms on the
-#                         benchmark's ports (40 is a typical Internet path),
-#                         calibrated so a TCP connect takes MS; implies
-#                         --mtu 1500 unless --mtu is given. Lowers the default
-#                         iterations to 20 / 10 / 5 (key exchange / ML-DSA /
-#                         versions): every sample now costs several round trips
-#   --bw RATE             network simulation: a bandwidth limit per direction
-#                         (e.g. 10mbit; kbit, mbit or gbit); implies --mtu 1500
-#                         unless --mtu is given. See NETWORK SIMULATION below.
 #   --remote [USER@]HOST  split-host mode: every TLS server runs on HOST, which
 #                         this script drives over one SSH connection, and the
 #                         clients here connect to HOST directly. See REMOTE
@@ -254,28 +242,6 @@
 #   FIPS always seeds from CPU jitter, and wolfSSL (and AWS-LC on macOS) is
 #   a shared library. env.txt records `fips: on` and each library's module.
 #
-# NETWORK SIMULATION (--mtu, --rtt, --bw)
-#   Localhost hides two things a real path shows: flights cut into ~1.5 KB
-#   segments, and round trips that cost time (a flight larger than TCP's
-#   initial window of 10 segments waits a round trip for acknowledgements).
-#   netsim.sh (next to this script) sets them up as root: sudo asks once, or
-#   run as root (the Docker image is; pqcbench-docker.sh adds the NET_ADMIN
-#   capability it needs). A watchdog restores everything when the run ends,
-#   however it ends; `sudo ./netsim.sh down` restores by hand.
-#     MTU: the loopback interface's (all its traffic, while the run lasts);
-#       on Linux also gso_max_size, without which packets on lo stay up to
-#       64 KB.
-#     RTT and bandwidth: only TCP to and from BASE_PORT..BASE_PORT+999, half
-#       the RTT each way (Linux: tc netem with u32 filters; macOS: dummynet
-#       pipes with pf rules in the anchor com.apple/pqcbench). The start-up
-#       baselines (no network, or a closed port below BASE_PORT) stay
-#       unshaped, so adj_median_ms is handshake plus network. The RTT is
-#       calibrated: netsim.sh scales the delay until a TCP connect takes it.
-#     macOS also sets net.inet.tcp.local_slowstart_flightsize to 10 (local
-#       connections otherwise start with 8 segments, not the usual 10).
-#   env.txt's `netsim:` line records the settings and the measured RTT.
-#   Times from such a run compare only with runs made with the same settings.
-#
 # REMOTE SERVERS (--remote HOST)
 #   Handshakes over a real network path: the servers run on HOST, the clients
 #   here. HOST needs the same pqc-bench checkout and builds (REMOTE_DIR, built
@@ -297,10 +263,11 @@
 #   The RTT (the median of 15 request/reply exchanges with the agent over the
 #   SSH connection; needs perl or python3 here) is measured at the start and
 #   the end, into env.txt (`remote:`, `remote end:`), along with HOST's own
-#   env.txt lines (`remote ...`). As with --rtt, the default
-#   iterations drop to 20 / 10 / 5. The start-up baselines and the primitive
-#   benchmarks still run here and measure this machine; `./pqcbench.sh
-#   --primitives-only` on HOST measures its CPU. Not with --mtu/--rtt/--bw.
+#   env.txt lines (`remote ...`). Every sample costs several round trips, so
+#   the default iterations drop to 20 / 10 / 5 (key exchange / ML-DSA /
+#   versions). The start-up baselines and the primitive benchmarks still run
+#   here and measure this machine; `./pqcbench.sh --primitives-only` on HOST
+#   measures its CPU.
 #
 # NOTES ON THE NUMBERS
 #   * Each handshake is timed as wall-clock for one client process: exec,
@@ -420,17 +387,17 @@ for _l in $LIB_ALL; do
   "${_l}_defaults"
 done
 # pqc-bench's own version: VERSION next to this script, plus the commit when
-# it's a git checkout (results under examples/ don't count as changes)
+# it's a git checkout
 _pv_d=$PQCB_DIR
 PQCBENCH_VERSION=$(sed -n '1p' "$_pv_d/VERSION" 2>/dev/null)
 if _pv_g=$(git -C "$_pv_d" rev-parse --short HEAD 2>/dev/null); then
-  [ -z "$(git -C "$_pv_d" status --porcelain -- . ':(exclude)examples' 2>/dev/null)" ] \
+  [ -z "$(git -C "$_pv_d" status --porcelain -- . 2>/dev/null)" ] \
     || _pv_g="$_pv_g, uncommitted changes"
 else
   _pv_g=
 fi
 PQCBENCH_VERSION="${PQCBENCH_VERSION:-unknown}${_pv_g:+ (git $_pv_g)}"
-# (set by the user: --rtt keeps them instead of lowering the defaults)
+# (set by the user: --remote keeps them instead of lowering the defaults)
 ITER_SET=${ITERATIONS:+1}; MLDSA_ITER_SET=${MLDSA_ITERATIONS:+1}; VS_ITER_SET=${VERSIONS_ITERATIONS:+1}
 : "${ITERATIONS:=100}"
 : "${MLDSA_ITERATIONS:=20}"
@@ -546,7 +513,6 @@ print_table() {
 # Args
 # ----------------------------------------------------------------------------
 DO_PRIM=1; DO_HS=1; DO_KEM=0; DO_MLDSA=0; DO_VERSIONS=0; VERSIONS_SCENARIOS=; GROUPS_SET=0
-NS_MTU=; NS_RTT=; NS_BW=
 while [ $# -gt 0 ]; do
   case $1 in
     -h|--help)          usage; exit 0 ;;
@@ -562,12 +528,6 @@ while [ $# -gt 0 ]; do
     --iterations=*)     ITERATIONS=${1#*=}; ITER_SET=1; shift ;;
     --mldsa-iterations) [ $# -ge 2 ] || die "$1 needs a value"; MLDSA_ITERATIONS=$2; MLDSA_ITER_SET=1; shift 2 ;;
     --mldsa-iterations=*) MLDSA_ITERATIONS=${1#*=}; MLDSA_ITER_SET=1; shift ;;
-    --mtu)              [ $# -ge 2 ] || die "$1 needs a value"; NS_MTU=$2; shift 2 ;;
-    --mtu=*)            NS_MTU=${1#*=}; shift ;;
-    --rtt)              [ $# -ge 2 ] || die "$1 needs a value"; NS_RTT=$2; shift 2 ;;
-    --rtt=*)            NS_RTT=${1#*=}; shift ;;
-    --bw)               [ $# -ge 2 ] || die "$1 needs a value"; NS_BW=$2; shift 2 ;;
-    --bw=*)             NS_BW=${1#*=}; shift ;;
     --groups)           [ $# -ge 2 ] || die "$1 needs a value"; GROUP_ORDER=$2; GROUPS_SET=1; shift 2 ;;
     --groups=*)         GROUP_ORDER=${1#*=}; GROUPS_SET=1; shift ;;
     --cert)             [ $# -ge 2 ] || die "$1 needs a value"; KEM_CERTS=$2; shift 2 ;;
@@ -627,41 +587,15 @@ if [ "$FIPS" = 1 ]; then
   [ -n "$GROUP_ORDER" ] || die "--fips: --groups has no FIPS-approved group"
   [ "$MLDSA_GROUP" = X25519 ] && [ "$DO_MLDSA" = 1 ] && die "--fips: MLDSA_GROUP=X25519 isn't FIPS-approved"
 fi
-# --remote: a real path, where every sample costs round trips, as with --rtt
+# --remote: a real path, where every sample costs round trips
 if [ -n "$REMOTE" ]; then
-  [ -z "$NS_MTU$NS_RTT$NS_BW" ] || die "--remote measures a real network path: not with --mtu/--rtt/--bw"
   [ -n "$ITER_SET" ] || ITERATIONS=20
   [ -n "$MLDSA_ITER_SET" ] || MLDSA_ITERATIONS=10
   [ -n "$VS_ITER_SET" ] || VERSIONS_ITERATIONS=5
 fi
-# network simulation (netsim.sh): --rtt / --bw imply a 1500-byte MTU; a
-# delayed path makes every sample cost round trips, so fewer by default
-NETSIM=0; NS_SETTLE=
-if [ -n "$NS_MTU$NS_RTT$NS_BW" ]; then
-  NETSIM=1
-  : "${NS_MTU:=1500}"
-  case $NS_MTU in ''|*[!0-9]*) die "--mtu needs a number" ;; esac
-  case $NS_RTT in ''|*[!0-9.]*|*.*.*) [ -z "$NS_RTT" ] || die "--rtt needs a number of milliseconds" ;; esac
-  case $NS_BW in ''|[0-9]*kbit|[0-9]*mbit|[0-9]*gbit) ;; *) die "--bw: a number with kbit, mbit or gbit (e.g. 10mbit)" ;; esac
-  [ -f "$PQCB_DIR/netsim.sh" ] || die "--mtu/--rtt/--bw need netsim.sh next to this script"
-  # absolute: sudo may start it in another directory
-  NETSIM_SH=$(cd "$PQCB_DIR" && pwd)/netsim.sh
-  if [ -n "$NS_RTT" ] && awk -v r="$NS_RTT" 'BEGIN { exit !(r > 0) }'; then
-    [ -n "$ITER_SET" ] || ITERATIONS=20
-    [ -n "$MLDSA_ITER_SET" ] || MLDSA_ITERATIONS=10
-    [ -n "$VS_ITER_SET" ] || VERSIONS_ITERATIONS=5
-    # a handshake with a HelloRetryRequest and a large ML-DSA flight is ~6
-    # round trips; keep the per-handshake timeout well above that
-    _ns_to=$(awk -v r="$NS_RTT" 'BEGIN { printf "%d", r * 50 / 1000 + 1 }')
-    if [ "$HS_TIMEOUT" -lt "$_ns_to" ]; then
-      warn "--rtt $NS_RTT: HS_TIMEOUT raised from $HS_TIMEOUT to $_ns_to s"
-      HS_TIMEOUT=$_ns_to
-    fi
-    # a server learns of a client's refusal half a round trip after the client
-    # exits: ensure_server/vs_ensure wait this long (seconds) before checking it
-    NS_SETTLE=$(awk -v r="$NS_RTT" 'BEGIN { printf "%.3f", r / 1000 }')
-  fi
-fi
+# seconds to wait before checking a server after a failed handshake (remote_up
+# sets it from the measured round trip; see ns_settle)
+NS_SETTLE=
 case $ITERATIONS       in ''|*[!0-9]*) die "iterations must be a positive integer" ;; esac
 case $MLDSA_ITERATIONS in ''|*[!0-9]*) die "mldsa iterations must be a non-negative integer" ;; esac
 case $VERSIONS_ITERATIONS in ''|*[!0-9]*) die "versions iterations must be a non-negative integer" ;; esac
@@ -881,9 +815,7 @@ host_env > "$OUTDIR/env.txt"
     echo "inproc: off"
   fi
   [ "$FIPS_SKIPPED_VERSIONS" = 1 ] && echo "fips versions mode: skipped"
-  # (with --mtu/--rtt/--bw, netsim_up appends the settings it applied;
-  # with --remote, remote_up its own)
-  [ "$NETSIM" = 1 ] || echo "netsim: off"
+  # (with --remote, remote_up appends its own lines)
 } >> "$OUTDIR/env.txt"
 
 hdr "Setup"
@@ -986,48 +918,6 @@ stop_server() { # IMPL
   eval "SPID_$1=; SGRP_$1="
 }
 stop_servers() { for _sx in $LIBS; do stop_server "$_sx"; done; }
-
-# --mtu/--rtt/--bw: netsim.sh as root (sudo, once, unless this is root), with
-# a watchdog that restores the network settings when this script exits
-NETSIM_ON=0
-netsim_up() {
-  [ "$NETSIM" = 1 ] || return 0
-  hdr "Network simulation"
-  if [ "$(id -u)" = 0 ]; then
-    _nu_sudo=
-  else
-    command -v sudo >/dev/null 2>&1 || die "--mtu/--rtt/--bw need root, and there's no sudo"
-    if ! sudo -n true 2>/dev/null; then
-      [ -t 0 ] || die "--mtu/--rtt/--bw need root: run as root, or where sudo can ask for a password"
-      info "netsim.sh changes the loopback interface and needs root: sudo asks for your password once"
-      info "  (a watchdog restores the settings when this run ends, however it ends)"
-    fi
-    _nu_sudo=sudo
-  fi
-  set -- up --mtu "$NS_MTU" --ports "$BASE_PORT-$((BASE_PORT + 999))" --watch "$$"
-  [ -n "$NS_RTT" ] && set -- "$@" --rtt "$NS_RTT"
-  [ -n "$NS_BW" ] && set -- "$@" --bw "$NS_BW"
-  NETSIM_LINE=$($_nu_sudo sh "$NETSIM_SH" "$@") || die "network simulation failed (see above)"
-  NETSIM_ON=1
-  echo "netsim: $NETSIM_LINE" >> "$OUTDIR/env.txt"
-  info "network: $NETSIM_LINE"
-  if [ -n "$NS_RTT" ]; then
-    info "  every sample costs several round trips: iterations $ITERATIONS / $MLDSA_ITERATIONS / $VERSIONS_ITERATIONS (key exchange / ML-DSA / versions)"
-  fi
-}
-netsim_down() {
-  [ "$NETSIM_ON" = 1 ] || return 0
-  NETSIM_ON=0
-  # the RTT again (no root needed): env.txt shows any drift during the run
-  if [ -n "$NS_SETTLE" ] && _nd_ms=$(sh "$NETSIM_SH" probe "$((BASE_PORT + 999))" 2>/dev/null); then
-    echo "netsim end: measured $_nd_ms ms" >> "$OUTDIR/env.txt"
-  fi
-  if [ "$(id -u)" = 0 ]; then
-    sh "$NETSIM_SH" down
-  elif ! sudo -n sh "$NETSIM_SH" down 2>/dev/null; then
-    info "network settings: netsim.sh's watchdog restores them within a second"
-  fi
-}
 
 # ----------------------------------------------------------------------------
 # --remote: the servers on another host
@@ -1244,9 +1134,9 @@ remote_up() {
   if [ -n "$_rmu_rtt" ]; then
     echo "remote: $REMOTE ($CONNECT_HOST), servers in $REMOTE_DIR; rtt measured $_rmu_rtt ms ($REMOTE_RTT_HOW)" >> "$OUTDIR/env.txt"
     info "round trip: $_rmu_rtt ms ($REMOTE_RTT_HOW)"
-    # as with --rtt: a server that exits after a refused handshake learns of
-    # the refusal half a round trip later (ns_settle), and the handshake
-    # timeout stays well above ~6 round trips
+    # a server that exits after a refused handshake learns of the refusal
+    # half a round trip later (ns_settle), and the handshake timeout stays
+    # well above ~6 round trips
     NS_SETTLE=$(awk -v r="$_rmu_rtt" 'BEGIN { printf "%.3f", r / 1000 }')
     _rmu_to=$(awk -v r="$_rmu_rtt" 'BEGIN { printf "%d", r * 50 / 1000 + 1 }')
     if [ "$HS_TIMEOUT" -lt "$_rmu_to" ]; then
@@ -1401,7 +1291,6 @@ on_exit() {
   if [ "$REMOTE_UP" = 1 ]; then remote_down; else stop_servers; fi
   cap_stop_raw
   for _ox in $LIBS; do lib_has "$_ox" cleanup && "${_ox}_cleanup"; done
-  netsim_down
 }
 trap on_exit EXIT
 trap 'on_exit; exit 130' INT TERM
@@ -1414,7 +1303,7 @@ RESTARTS=0
 # HOST costs a round trip). After a failure the server is checked again; one
 # check per hint.
 SRV_SERVED=
-# With --rtt or --remote, a server that exits after a failed handshake
+# With --remote, a server that exits after a failed handshake
 # (wolfSSL, s2nd) still runs and listens until the client's refusal reaches it,
 # half a round trip after the client exited; without a hint, wait a round trip
 # first, or the next client finds the port closed.
@@ -1458,10 +1347,9 @@ ensure_server() { # IMPL GROUP [LABEL]
 # the next free port for each library's server
 alloc_ports() {
   for _ap in $LIBS; do eval "SPORT_$_ap=\$NEXT_PORT"; NEXT_PORT=$((NEXT_PORT + 1)); done
-  # netsim.sh shapes BASE_PORT .. BASE_PORT+999 only, and --remote's HOST lets
-  # that range through
-  if { [ "$NETSIM" = 1 ] || [ -n "$REMOTE" ]; } && [ "$NEXT_PORT" -gt $((BASE_PORT + 999)) ]; then
-    die "more than 1000 server ports: past BASE_PORT..BASE_PORT+999 (netsim.sh shapes and --remote's HOST lets through); run fewer modes or libraries"
+  # --remote's HOST lets BASE_PORT .. BASE_PORT+999 through, no more
+  if [ -n "$REMOTE" ] && [ "$NEXT_PORT" -gt $((BASE_PORT + 999)) ]; then
+    die "more than 1000 server ports: past BASE_PORT..BASE_PORT+999, the range --remote's HOST lets through; run fewer modes or libraries"
   fi
 }
 
@@ -3447,7 +3335,6 @@ srv_keys() { if [ "$CAPTURE" = 1 ]; then printf '%s\n' "$CAPDIR/keys/server-$1-$
 # ----------------------------------------------------------------------------
 # --serve: HOST's agent for a --remote run, until the run ends
 if [ -n "$SERVE" ]; then serve_loop; exit 0; fi
-netsim_up
 remote_up
 if [ "$CAPTURE" = 1 ]; then
   if [ "$DO_HS" = 1 ]; then cap_setup; else warn "--capture has nothing to capture with --primitives-only"; CAPTURE=0; fi

@@ -148,8 +148,8 @@ WOLF_FIPS_FLAGS="--enable-fips=ready --enable-mlkem --enable-mldsa --enable-ed25
 --enable-sp --enable-sp-asm --enable-shared --disable-static CPPFLAGS=-DWOLFSSL_ALT_NAMES"
 
 # packages for --deps: compilers and build tools, plus what pqcbench.sh uses at
-# run time (GNU date and timeout, ss, tcpdump for --capture; tc from iproute2
-# and perl for netsim.sh, --mtu/--rtt/--bw). Go is required
+# run time (GNU date and timeout, ss from iproute2, tcpdump for --capture, perl
+# for --remote's round-trip timing). Go is required
 # for AWS-LC's code generation; curl and unzip fetch the wolfSSL FIPS Ready zip;
 # rustup brings the Rust toolchain rustls-tools pins, and libclang serves the
 # wolfcrypt rustls provider's bindgen. On musl (Alpine) Rust's static libraries
@@ -279,7 +279,7 @@ install_deps() {
     # shellcheck disable=SC2086
     as_root apk add --no-cache $APK_PKGS || die "apk add failed"
   else
-    die "--deps knows apt-get, apk and Homebrew. Install by hand: git, a C/C++ toolchain with make, autoconf, automake, libtool, pkg-config, cmake, perl, Go 1.20+, Linux headers; for pqcbench.sh GNU coreutils (date, timeout), ss and tc (iproute2) and tcpdump"
+    die "--deps knows apt-get, apk and Homebrew. Install by hand: git, a C/C++ toolchain with make, autoconf, automake, libtool, pkg-config, cmake, perl, Go 1.20+, Linux headers; for pqcbench.sh GNU coreutils (date, timeout), ss (iproute2) and tcpdump"
   fi
 }
 
@@ -891,7 +891,7 @@ hsloop_cc() { # NAME SOURCE CFLAGS LIBS  -> hsloop/bin/hsloop-NAME from hsloop/S
 }
 build_hsloop() {
   COMP=hsloop
-  # no sources (e.g. an early Docker layer): nothing to do
+  # no sources: nothing to do
   [ -f "$HSLOOP_D/hsloop.c" ] || return 0
   _hl_cc=${CC:-cc}
   _hl_src="$HSLOOP_D/hsloop.c $HSLOOP_D/hsloop.h"

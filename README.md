@@ -17,9 +17,12 @@ It answers four questions:
    HelloRetryRequests, refusals, and post-quantum clients that silently end up on classical key
    exchange.
 
-This repository is the build-and-run subset of the full pqc-bench project, plus **split-host mode**
-(`pqcbench.sh --remote`), which runs the servers on another host. Everything also runs on a
-single machine over loopback, as the full project does.
+Runs come in two shapes:
+
+- **Split-host** (`pqcbench.sh --remote HOST`): the servers run on HOST and the clients on your
+  workstation, so the measurements include a real network path.
+- **Loopback** (no `--remote`): everything on one machine. On the server host, this is the baseline
+  for its own CPU.
 
 ---
 
@@ -65,12 +68,6 @@ single machine over loopback, as the full project does.
 | `rustls-tools/` | Cargo workspace: `core/` (the `pqc-rustls` client, server, capabilities and speed tool) and one crate per crypto provider in `providers/`. rustls is pinned at 0.23.45, the toolchain in `rust-toolchain.toml`. |
 | `pqc_analyze.py` | Turns runs into comparison tables, CSVs, charts and a Markdown report. Python 3 standard library; matplotlib optional. |
 | `VERSION` | Project version, recorded in every run's `env.txt`. |
-| `HANDOFF.md` | Working notes: how split-host mode came about, what was verified, open items. |
-
-Not in this repository (they're in the full project): `netsim.sh` (loopback network simulation, so
-`--mtu`, `--rtt` and `--bw` stop with an error here), the Docker image and its wrapper,
-`clean.sh`, and the example runs and reports. Split-host mode measures a real path instead of a
-simulated one.
 
 ---
 
@@ -390,12 +387,11 @@ RUSTLS_PROVIDERS=aws-lc-rs ./setup.sh   # rustls with its default provider only 
   `--no-rustls`, `--rustls-provider` and `--fips` are passed to the agent, so both ends agree. The
   run stops if HOST lacks a library.
 - **Iterations:** every sample costs several real round trips, so the defaults drop to **20 / 10 / 5**
-  (key exchange / ML-DSA / versions), as with simulated latency. `-n`, `--mldsa-iterations` and
+  (key exchange / ML-DSA / versions). `-n`, `--mldsa-iterations` and
   `--versions-iterations` override them.
 - **Timeouts:** `HS_TIMEOUT` rises to at least 50 round trips. After a failed handshake, the next
   server check waits one round trip, because a server that exits after a refused handshake only
   learns of the refusal half a round trip after the client.
-- **Not with** `--mtu`, `--rtt` or `--bw` (they simulate a path on loopback).
 - **Ports:** a run uses at most 1000 server ports (`BASE_PORT`..`BASE_PORT`+999, the range the
   security group allows); one per library for each group, ML-DSA chain and versions scenario, so
   even an `--all` run with every rustls provider stays well inside it.
@@ -654,7 +650,6 @@ crates.io. `wolfcrypt` is GPL-3.0 and is fetched and patched by `setup.sh`.
 | `rustls (…) not found … leaving it out` | `./setup.sh rustls` (needs rustup). |
 | `setup.sh`: `SSL certificate problem` | A TLS-inspecting proxy: set `EXTRA_CA_FILE` to its root CA. |
 | `setup.sh`: `Go not found` | AWS-LC needs Go 1.20+: `./setup.sh --deps`. |
-| `--mtu/--rtt/--bw need netsim.sh` | Network simulation isn't part of this repository; use `--remote` for a real path. |
 | `cut: … Illegal byte sequence` at start-up (macOS) | Harmless: a byte check on binary files under a UTF-8 locale. |
 
 ---
@@ -679,7 +674,7 @@ crates.io. `wolfcrypt` is GPL-3.0 and is fetched and patched by `setup.sh`.
 
 ## Project status
 
-- Loopback runs are unchanged by split-host mode.
+- Loopback runs (no `--remote`) were tested on macOS with all four libraries, 0 failures.
 - Split-host mode was tested from a macOS workstation in two ways:
   - **Against an agent on the same Mac:** all three modes, `--inproc --capture`, all four libraries,
     0 failures.
@@ -688,6 +683,5 @@ crates.io. `wolfcrypt` is GPL-3.0 and is fetched and patched by `setup.sh`.
   Both tests also covered the failure paths: a port in use, interruption, and a dropped SSH
   session.
 - **Not yet run against EC2 itself.** The first real run is the [smoke test](#a-measurement-plan).
-- No `LICENSE` file yet; the Cargo workspace declares MIT. wolfSSL and the wolfcrypt rustls
-  provider are GPL-3.0 and are fetched at build time.
-- `HANDOFF.md` has the working notes and open items.
+- MIT licensed (`LICENSE`), as is the Cargo workspace. wolfSSL and the wolfcrypt rustls provider
+  are GPL-3.0 and are fetched at build time, not included here.
