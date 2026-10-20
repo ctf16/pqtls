@@ -18,4 +18,4 @@ path = "src/main.rs"
 # the provider and its tests: https://github.com/ctf16/rustls-provider-graviola-pq
 [dependencies]
 pqc-rustls = { workspace = true }
-rustls-provider-graviola-pq = "=0.1.0"
+rustls-provider-graviola-pq = "=0.1.1"

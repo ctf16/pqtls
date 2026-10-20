@@ -2002,9 +2002,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-provider-graviola-pq"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a7f913bb356b6cb35caefffe0b9672c3533abb02c6d9ab403c935faf6823d57"
+checksum = "89fd36b500ec16cdf26af84bff8ffa9f89e636454b8905c92535ee86d3708631"
 dependencies = [
  "graviola",
  "rustls",
@@ -2012,9 +2012,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-provider-libcrux-pq"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9fee25837cc6e5edac320c4528118e4030166ea4c7fed7b52022858d556f2a2e"
+checksum = "a6e3b5b4dda21925625f7fd7791aedbbaea4c972cab6a209ff7ce72de37ad08c"
 dependencies = [
  "der 0.8.2",
  "getrandom 0.4.3",
@@ -2038,9 +2038,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-provider-rustcrypto-pq"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f1e5ba6503997f06de982ba9272e8e8b4a61bec8d0b58b974887797d3481267"
+checksum = "b7ffbb625218cb0ec4f69418b624c8ee01d303bc07c68e0677a6f20b028e321d"
 dependencies = [
  "aes-gcm 0.11.1",
  "chacha20poly1305 0.11.0",

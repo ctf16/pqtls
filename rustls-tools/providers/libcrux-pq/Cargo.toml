@@ -18,4 +18,4 @@ path = "src/main.rs"
 # the provider and its tests: https://github.com/ctf16/rustls-provider-libcrux-pq
 [dependencies]
 pqc-rustls = { workspace = true }
-rustls-provider-libcrux-pq = "=0.1.0"
+rustls-provider-libcrux-pq = "=0.1.1"
