@@ -1,0 +1,21 @@
+[package]
+name = "pqc-rustls-rustcrypto-pq"
+description = "pqc-bench rustls tools with rustls-provider-rustcrypto-pq (our own provider on the current RustCrypto crates, including ML-KEM and ML-DSA)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# libhsloop_rustls.a: the hsloop adapter (linked with hsloop/hsloop.c by setup.sh)
+[lib]
+name = "hsloop_rustls"
+crate-type = ["staticlib"]
+
+[[bin]]
+name = "pqc-rustls"
+path = "src/main.rs"
+
+# the provider and its tests: https://github.com/ctf16/rustls-provider-rustcrypto-pq
+[dependencies]
+pqc-rustls = { workspace = true }
+rustls-provider-rustcrypto-pq = "=0.1.0"

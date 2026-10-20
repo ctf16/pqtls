@@ -1,0 +1,41 @@
+# pqc-bench rustls tools: one generic core plus one small crate per crypto
+# provider. Each provider crate builds `pqc-rustls` (per-process client and
+# server, capability dump, primitive benchmark) and libhsloop_rustls.a (the
+# hsloop adapter for pqcbench.sh --inproc). setup.sh builds them.
+#
+# providers/wolfcrypt is excluded: its provider source is fetched and patched
+# by setup.sh (rustls-wolfcrypt/ next to this directory), so it builds as a
+# workspace of its own.
+[workspace]
+resolver = "2"
+members = [
+    "core",
+    "providers/aws-lc-rs",
+    "providers/ring",
+    "providers/graviola",
+    "providers/graviola-pq",
+    "providers/rustcrypto",
+    "providers/rustcrypto-pq",
+    "providers/libcrux-pq",
+]
+exclude = ["providers/wolfcrypt"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+# pinned: the rustls release every provider is benchmarked with
+rustls = { version = "=0.23.45", default-features = false, features = ["std", "tls12"] }
+pqc-rustls = { path = "core" }
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "thin"
+debug = false
+# no stripping: pqcbench.sh reads the symbols (nm) to tell the AWS-LC entropy
+# build, and rustup's rust-objcopy can't always run on macOS
+strip = "none"

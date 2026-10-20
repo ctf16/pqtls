@@ -1,0 +1,21 @@
+[package]
+name = "pqc-rustls-rustcrypto"
+description = "pqc-bench rustls tools with rustls-rustcrypto (RustCrypto crates; alpha)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# libhsloop_rustls.a: the hsloop adapter (linked with hsloop/hsloop.c by setup.sh)
+[lib]
+name = "hsloop_rustls"
+crate-type = ["staticlib"]
+
+[[bin]]
+name = "pqc-rustls"
+path = "src/main.rs"
+
+[dependencies]
+pqc-rustls = { workspace = true }
+rustls = { workspace = true }
+rustls-rustcrypto = "=0.0.2-alpha"

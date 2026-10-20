@@ -1,0 +1,35 @@
+# rustls-wolfcrypt-provider (wolfSSL's provider; git-only, GPL-3.0): setup.sh
+# fetches it into rustls-wolfcrypt/ next to rustls-tools/ at a pinned commit and
+# applies wolfcrypt-rs-build.patch, so that it builds this project's wolfSSL
+# (optimized, with assembly) instead of downloading wolfSSL 5.9.1 and building
+# it with --enable-debug (-O0). A workspace of its own: that path only exists
+# once setup.sh has fetched it.
+[package]
+name = "pqc-rustls-wolfcrypt"
+description = "pqc-bench rustls tools with rustls-wolfcrypt-provider (wolfCrypt)"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+publish = false
+
+[workspace]
+
+[lib]
+name = "hsloop_rustls"
+crate-type = ["staticlib"]
+
+[[bin]]
+name = "pqc-rustls"
+path = "src/main.rs"
+
+[dependencies]
+pqc-rustls = { path = "../../core" }
+rustls = { version = "=0.23.45", default-features = false, features = ["std", "tls12"] }
+rustls-wolfcrypt-provider = { path = "../../../rustls-wolfcrypt/rustls-wolfcrypt-provider" }
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "thin"
+debug = false
+strip = "none"

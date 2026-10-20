@@ -1,0 +1,82 @@
+diff --git a/wolfcrypt-rs/Cargo.toml b/wolfcrypt-rs/Cargo.toml
+index 98a6fc0..f624260 100644
+--- a/wolfcrypt-rs/Cargo.toml
++++ b/wolfcrypt-rs/Cargo.toml
+@@ -7,7 +7,7 @@ edition = "2021"
+ std = []
+ 
+ [build-dependencies]
+-bindgen = "0.71.1"
++bindgen = "0.72"
+ sha2 = "0.11.0"
+ 
+ [profile.release]
+diff --git a/wolfcrypt-rs/build.rs b/wolfcrypt-rs/build.rs
+index 1330a07..555732f 100644
+--- a/wolfcrypt-rs/build.rs
++++ b/wolfcrypt-rs/build.rs
+@@ -31,8 +31,18 @@ fn main() {
+ ///
+ /// Returns `Ok(())` if successful, or an error if any step fails.
+ fn run_build() -> Result<()> {
++    println!("cargo:rerun-if-env-changed=WOLFCRYPT_RS_WOLFSSL_SRC");
++    println!("cargo:rerun-if-env-changed=WOLFCRYPT_RS_CONFIGURE");
+     let prefix = install_prefix();
+-    if fs::metadata(WOLFSSL_DIR).is_err() || fs::metadata(prefix.join("lib")).is_err() {
++    if let Some(src) = env::var_os("WOLFCRYPT_RS_WOLFSSL_SRC") {
++        // a wolfSSL source tree given by the caller (no download), built with
++        // WOLFCRYPT_RS_CONFIGURE
++        if fs::metadata(prefix.join("lib")).is_err() {
++            let root = env::current_dir()?;
++            build_wolfssl(&PathBuf::from(src))?;
++            env::set_current_dir(root)?;
++        }
++    } else if fs::metadata(WOLFSSL_DIR).is_err() || fs::metadata(prefix.join("lib")).is_err() {
+         setup_wolfssl()?;
+     }
+ 
+@@ -106,7 +116,7 @@ fn setup_wolfssl() -> Result<()> {
+     verify_download(WOLFSSL_ZIP, WOLFSSL_SHA256)?;
+     unzip_wolfssl()?;
+     remove_zip()?;
+-    build_wolfssl()?;
++    build_wolfssl(&PathBuf::from(WOLFSSL_DIR))?;
+     change_back_to_root()?;
+     Ok(())
+ }
+@@ -201,24 +211,22 @@ fn remove_zip() -> Result<()> {
+ /// 5. Installs the library system-wide
+ ///
+ /// Returns `Ok(())` if all build steps succeed, or an error if any step fails.
+-fn build_wolfssl() -> Result<()> {
+-    env::set_current_dir(WOLFSSL_DIR)?;
+-    println!("Changed directory to {WOLFSSL_DIR}.");
++fn build_wolfssl(dir: &PathBuf) -> Result<()> {
++    env::set_current_dir(dir)?;
++    println!("Changed directory to {}.", dir.display());
+ 
+     let prefix = install_prefix();
+     let prefix_arg = format!("--prefix={}", prefix.to_str().unwrap());
++    // WOLFCRYPT_RS_CONFIGURE replaces the default (debug, unoptimized) flags
++    let flags = env::var("WOLFCRYPT_RS_CONFIGURE")
++        .unwrap_or_else(|_| "--enable-all-crypto --enable-debug --disable-shared".to_string());
++    let mut args: Vec<&str> = flags.split_whitespace().collect();
++    args.push(&prefix_arg);
++    let jobs = format!("-j{}", env::var("NUM_JOBS").unwrap_or_else(|_| "1".to_string()));
+ 
+     run_command("./autogen.sh", &[])?;
+-    run_command(
+-        "./configure",
+-        &[
+-            "--enable-all-crypto",
+-            "--enable-debug",
+-            "--disable-shared",
+-            &prefix_arg,
+-        ],
+-    )?;
+-    run_command("make", &[])?;
++    run_command("./configure", &args)?;
++    run_command("make", &[&jobs])?;
+     run_command("make", &["install"])?;
+ 
+     Ok(())

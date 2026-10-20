@@ -1,0 +1,10 @@
+[package]
+name = "pqc-rustls"
+description = "pqc-bench rustls tools: client, server, capabilities, primitive benchmark and hsloop adapter, generic over a rustls CryptoProvider"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+rustls = { workspace = true }

@@ -1,0 +1,20 @@
+[package]
+name = "pqc-rustls-ring"
+description = "pqc-bench rustls tools with rustls's ring provider"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# libhsloop_rustls.a: the hsloop adapter (linked with hsloop/hsloop.c by setup.sh)
+[lib]
+name = "hsloop_rustls"
+crate-type = ["staticlib"]
+
+[[bin]]
+name = "pqc-rustls"
+path = "src/main.rs"
+
+[dependencies]
+pqc-rustls = { workspace = true }
+rustls = { workspace = true, features = ["ring"] }
